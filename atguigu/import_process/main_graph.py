@@ -17,6 +17,7 @@ from atguigu.import_process.nodes.node_item_name_recognition import NodeItemName
 from atguigu.import_process.nodes.node_md_img import NodeMDImg
 from atguigu.import_process.nodes.node_pdf_to_md import NodePDFToMD
 from atguigu.import_process.state import ImportGraphState
+from atguigu.tool.json_format_util import parse_json
 
 load_dotenv()
 
@@ -98,4 +99,4 @@ if __name__ == '__main__':
     result = graph.run(init_state, is_stream=False)
 
     # result = MainGraph.create_and_run(init_state, is_stream=False)
-    print(result)
+    print(parse_json(result))

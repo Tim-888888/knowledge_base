@@ -7,6 +7,8 @@ from pathlib import Path
 
 from atguigu.import_process.base import NodeBase
 from atguigu.import_process.state import ImportGraphState
+from atguigu.tool.json_format_util import parse_json
+from atguigu.tool.logger import logger
 
 
 class NodeEntry(NodeBase):
@@ -55,4 +57,4 @@ if __name__ == '__main__':
     # 测试
     node = NodeEntry()
     state=node({"local_file_path": r"E:\大模型学习\其他班文件\0331班\尚硅谷大模型项目之掌柜智库\2.资料\04-设备手册汇总\doc\Aolynk CB304n Cable网桥 用户手册-5W100-整本手册.pdf"})
-    print(state)
+    logger.info(parse_json(state))
