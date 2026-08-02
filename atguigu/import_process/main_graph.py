@@ -74,6 +74,7 @@ class KBImportWorkflow:
         self._builder.add_edge(self._node_bge_embedding.name, self._node_import_milvus.name)
         self._builder.add_edge(self._node_import_milvus.name, END)
 
+    # 单例模式, 懒加载
     def _compile(self):
         if self._graph is None:
             self._graph = self._builder.compile()
@@ -95,7 +96,7 @@ class KBImportWorkflow:
 if __name__ == '__main__':
     graph = KBImportWorkflow()
     init_state = {
-        "local_file_path": r"E:\大模型学习\其他班文件\0331班\尚硅谷大模型项目之掌柜智库\2.资料\04-设备手册汇总\doc\Aolynk CB304n Cable网桥 用户手册-5W100-整本手册.pdf"}
+        "local_file_path": r"E:\output\Aolynk CB304n Cable网桥 用户手册-5W100-整本手册.pdf"}
     result = graph.run(init_state, is_stream=False)
 
     # result = MainGraph.create_and_run(init_state, is_stream=False)

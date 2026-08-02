@@ -26,6 +26,8 @@ class NodeEntry(NodeBase):
     def process(self, state: ImportGraphState):
         # 获取单个输入文件路径
         local_file_path = state.get("local_file_path")
+
+        # 拦截逻辑
         if not local_file_path:
             return RuntimeError(f"state local_file_path 必须提供")
         file_path = Path(local_file_path)
