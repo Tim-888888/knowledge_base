@@ -154,13 +154,13 @@ class NodePDFToMD(NodeBase):
         timeout_time = 300
 
         while True:
-            try:
-                # 设定超时时间, 结束循环
-                current_time = time.time()
-                if current_time - start_time > timeout_time:
-                    logger.error(f"获取下载url超时, 超时时间:{timeout_time}")
-                    break
+            # 设定超时时间, 结束循环
+            current_time = time.time()
+            if current_time - start_time > timeout_time:
+                logger.error(f"获取下载url超时, 超时时间:{timeout_time}")
+                raise TimeoutError(f"获取下载url超时, 超时时间:{timeout_time}")
 
+            try:
                 res = requests.get(url, headers=header)
 
                 """
@@ -223,7 +223,7 @@ class NodePDFToMD(NodeBase):
         zip_file_content = zip_path_res.content
         zip_name = pdf_path_obj.stem + ".zip"
         zip_file_path = local_dir_obj / zip_name
-        with open(zip_file_path, "wb") as f :
+        with open(zip_file_path, "wb") as f:
             f.write(zip_file_content)
 
         # 解压zip文件

@@ -23,7 +23,7 @@ class KBImportConfig:
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     OPENAI_API_BASE = os.getenv("OPENAI_API_BASE")
     LLM_DEFAULT_MODEL = os.getenv("LLM_DEFAULT_MODEL")
-    LLM_DEFAULT_TEMPERATURE = os.getenv("LLM_DEFAULT_TEMPERATURE")
+    LLM_DEFAULT_TEMPERATURE = float(os.getenv("LLM_DEFAULT_TEMPERATURE"))
     VL_MODEL = os.getenv("VL_MODEL")
     ITEM_MODEL = os.getenv("ITEM_MODEL")
 
