@@ -1,5 +1,6 @@
 .venv/
 .env
+/.idea/
 /.idea/dictionaries/project.xml
 /.idea/inspectionProfiles/profiles_settings.xml
 /.idea/inspectionProfiles/Project_Default.xml
@@ -11,3 +12,4 @@
 /.idea/modules.xml
 /.idea/pyProjectModel.xml
 /.idea/vcs.xml
+/.idea/claudeCodeTabState.xml
