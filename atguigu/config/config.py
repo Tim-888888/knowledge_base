@@ -51,6 +51,7 @@ class KBImportConfig:
     MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
     MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
     MINIO_BUCKET_NAME = os.getenv("MINIO_BUCKET_NAME")
+    MINIO_IMG_DIR = os.getenv("MINIO_IMG_DIR")
 
     MCP_DASHSCOPE_BASE_URL = os.getenv("MCP_DASHSCOPE_BASE_URL")
 

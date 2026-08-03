@@ -11,12 +11,15 @@ from pathlib import Path
 from typing import List, Tuple
 
 from langchain.chat_models import init_chat_model
+from minio import Minio
+from minio.deleteobjects import DeleteObject
 
 from atguigu.config.config import KBImportConfig
 from atguigu.import_process.base import NodeBase
 from atguigu.import_process.state import ImportGraphState
 from atguigu.tool.json_format_util import parse_json
 from atguigu.tool.logger import logger
+from atguigu.tool.minio_utils import get_minio_client
 
 
 class NodeMDImg(NodeBase):
@@ -44,10 +47,12 @@ class NodeMDImg(NodeBase):
         images_summary = self.get_images_summary(list_image)
 
         # 图片写入MinIO, 获取url地址
+        self.wirte_images_to_minio(file_title, images_summary)
 
         # 图片摘要和url地址回写到md文档中图片对应位置
+        md_content = self.write_md_content(md_content, images_summary)
 
-        return state
+        return {"md_content": md_content}
 
     def parameter_validation(self, state: ImportGraphState) -> Path:
         logger.info("参数校验开始")
@@ -249,9 +254,9 @@ class NodeMDImg(NodeBase):
                 logger.info(f"图片[{image_path}]已处理, 图片摘要[{content}]")
                 # 组装结果
                 images_summary.append({
-                    "image_path":image_path,
+                    "image_path": image_path,
                     "image_name": Path(image_path).name,
-                    "image_summary":content,
+                    "image_summary": content,
                 })
             except Exception as e:
                 logger.error(f"发生未知异常, 图片摘要赋予默认值. {e}")
@@ -263,6 +268,60 @@ class NodeMDImg(NodeBase):
 
         logger.info("获取所有md图片摘要完成")
         return images_summary
+
+    def wirte_images_to_minio(self, file_title: str, images_summary: List[dict]):
+        # 构造MinIO存放图片的路径 bucket/file_title/图片
+        upload_path = f"{Path(KBImportConfig.MINIO_IMG_DIR)}/{file_title}".replace(" ", "")
+
+        client = get_minio_client()
+        # 先删除upload_path整个路径(幂等操作)
+        self.delete_minio_objects(client, upload_path)
+
+        # 写入md对应的所有图片 获取url
+        self.upload_images(client, images_summary, upload_path)
+
+    def delete_minio_objects(self, client: Minio | None, upload_path: str):
+        try:
+            list_objects = client.list_objects(
+                bucket_name=KBImportConfig.MINIO_BUCKET_NAME,
+                prefix=upload_path,
+                recursive=True
+            )
+            delete_obj_list = [DeleteObject(obj.object_name) for obj in list_objects]
+            if delete_obj_list:
+                errors = client.remove_objects(
+                    bucket_name=KBImportConfig.MINIO_BUCKET_NAME,
+                    delete_object_list=delete_obj_list
+                )
+                for error in errors:
+                    logger.error(f"MinIO 删除失败, {error}")
+        except Exception as e:
+            logger.error(f"MinIO 删除失败, {e}")
+
+    def upload_images(self, client: Minio, images_summary: List[dict], upload_path: str):
+        for summary_dict in images_summary:
+            image_path = summary_dict['image_path']
+            image_name = summary_dict['image_name']
+            object_name = f"{upload_path}/{image_name}"
+            result = client.fput_object(
+                KBImportConfig.MINIO_BUCKET_NAME, object_name, image_path
+            )
+            url = f"http://{KBImportConfig.MINIO_ENDPOINT}/{KBImportConfig.MINIO_BUCKET_NAME}/{result.object_name}"
+            summary_dict['image_url'] = url
+
+    def write_md_content(self, md_content: str, images_summary: List[dict]) -> str:
+        """正则替换md图片摘要和MinIO的url"""
+        for summary_dict in images_summary:
+            image_name = summary_dict['image_name']
+            image_summary = summary_dict['image_summary']
+            image_url = summary_dict['image_url']
+
+            pattern = re.compile(
+                r"!\[.*?\]\(.*?" + re.escape(image_name) + r"\)",
+                re.IGNORECASE
+            )
+            md_content = pattern.sub(lambda m: f"![{image_summary}]({image_url})", md_content)
+        return md_content
 
 
 if __name__ == '__main__':
