@@ -9,6 +9,7 @@ from langgraph.constants import START, END
 from langgraph.graph import StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from atguigu.config.config import KBImportConfig
 from atguigu.import_process.nodes.node_bge_embedding import NodeBGEEmbedding
 from atguigu.import_process.nodes.node_document_split import NodeDocumentSplit
 from atguigu.import_process.nodes.node_entry import NodeEntry
@@ -96,7 +97,9 @@ class KBImportWorkflow:
 if __name__ == '__main__':
     graph = KBImportWorkflow()
     init_state = {
-        "local_file_path": r"E:\output\Aolynk CB304n Cable网桥 用户手册-5W100-整本手册.pdf"}
+        "local_dir": KBImportConfig.LOCAL_DIR,
+        "local_file_path": r"E:\output\hak180产品安全手册.pdf"
+    }
     result = graph.run(init_state, is_stream=False)
 
     # result = MainGraph.create_and_run(init_state, is_stream=False)

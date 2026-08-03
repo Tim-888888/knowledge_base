@@ -19,6 +19,7 @@ from atguigu.import_process.base import NodeBase
 from atguigu.import_process.state import ImportGraphState
 import requests
 
+from atguigu.tool.json_format_util import parse_json
 from atguigu.tool.logger import logger
 
 load_dotenv(override=True)
@@ -55,11 +56,11 @@ class NodePDFToMD(NodeBase):
         print(url)
 
         # 下载pdf + 解压pdf + 文件改名
-        new_path, md_content = self.download_and_unzip(url, pdf_path_obj, local_dir_obj)
+        new_path, file_title = self.download_and_unzip(url, pdf_path_obj, local_dir_obj)
 
         # 组装state返回结果
         state["md_path"] = new_path
-        state["md_content"] = md_content
+        state["file_title"] = file_title
 
         return state
 
@@ -73,7 +74,10 @@ class NodePDFToMD(NodeBase):
         if not pdf_path_obj.exists():
             raise RuntimeError(f"pdf文件不存在, 请检查路径: {pdf_path}")
 
-        local_dir = state.get("local_dir", KBImportConfig.LOCAL_DIR)
+        local_dir = state.get("local_dir")
+        if not local_dir:
+            logger.error("local_dir输出路径不存在, 请添加")
+            raise ValueError(f"local_dir输出路径不存在, 请添加")
         local_dir_obj = Path(local_dir)
         if not local_dir_obj.exists():
             local_dir_obj.mkdir(parents=True, exist_ok=True)
@@ -239,16 +243,13 @@ class NodePDFToMD(NodeBase):
         new_path = full_md_path.with_name(pdf_path_obj.stem + ".md")
         full_md_path.rename(new_path)
 
-        # 读取md文件内容
-        with open(new_path, "r", encoding="utf-8") as f:
-            md_content = f.read()
-
-        return str(new_path), md_content
+        return str(new_path), pdf_path_obj.stem
 
 
 if __name__ == '__main__':
     node = NodePDFToMD()
     init_state = {
-        "pdf_path": r"E:\output\Aolynk CB304n Cable网桥 用户手册-5W100-整本手册.pdf"
+        "pdf_path": r"E:\output\hak180产品安全手册.pdf",
+        "local_dir": KBImportConfig.LOCAL_DIR
     }
-    node(init_state)
+    print(parse_json(node(init_state)))
