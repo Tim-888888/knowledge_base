@@ -74,49 +74,6 @@ class NodeMDImg(NodeBase):
         logger.info("参数校验完成")
         return md_path, md_content, file_title
 
-    # def get_md_images(self, md_path: str, md_content: str, file_title: str, context_len=100) -> List[
-    #     Tuple[str, str, Tuple[str, str]]]:
-    #     """获取md图片, 过滤不存在md里的图片, 获取图片的前后文"""
-    #     logger.info("获取md图片+上下文开始")
-    #     md_path_obj = Path(md_path)
-    #
-    #     # 获取md图片
-    #     image_dir = md_path_obj.parent / "images"
-    #     image_paths = os.listdir(image_dir)
-    #
-    #     # MinIO支持的图片格式
-    #     IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
-    #
-    #     valid_image_paths = []
-    #     for image_path in image_paths:
-    #         image_path_obj = Path(image_path)
-    #         # 过滤符合MinIO后缀的image文件
-    #         if image_path_obj.suffix.lower() not in IMAGE_EXTENSIONS:
-    #             logger.warning(f"图片[{image_path_obj}], 后缀不符合MinIO存储格式, 不进行处理")
-    #             continue
-    #
-    #         # 过滤不存在md里的图片
-    #         pattern = re.compile(
-    #             rf'!\[[^]]*]\(([^)]*(?<![\w.-]){re.escape(image_path)})\)',
-    #             re.IGNORECASE
-    #         )
-    #         match = re.search(pattern, md_content)
-    #         if not match:
-    #             logger.warning(f"图片[{image_path_obj}], 在md文件中不存在, 不进行处理")
-    #             continue
-    #
-    #         start_index, end_index = match.span()
-    #
-    #         pre_content = md_content[max(0, start_index - context_len): start_index]
-    #         post_content = md_content[end_index: min(len(md_content), end_index + context_len)]
-    #
-    #         logger.info(f"图片[{image_path_obj}], 处理完成, 加入结果集")
-    #
-    #         valid_image_paths.append((file_title, str(image_dir / image_path), (pre_content, post_content)))
-    #
-    #     logger.info("获取md图片+上下文完成")
-    #     return valid_image_paths
-
     def get_md_images(
             self,
             md_path: str,
