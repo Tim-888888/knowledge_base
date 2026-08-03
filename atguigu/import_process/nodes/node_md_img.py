@@ -33,7 +33,7 @@ class NodeMDImg(NodeBase):
         # 参数校验
         md_path, md_content, file_title = self.parameter_validation(state)
 
-        # 获取md图片, 过滤不存在md里的图片, 获取图片的前后文
+        # 获取有效的md图片, 过滤不存在md里的图片, 获取图片的前后文
         list_image = self.get_md_images(md_path, md_content, file_title)
 
         if not list_image:
@@ -201,56 +201,64 @@ class NodeMDImg(NodeBase):
         )
 
         for file_title, image_path, context in list_image:
-            # 定义限流窗口：60秒内最多请求100次
-            while True:
-                now = time.monotonic()  # 返回一个只会单调递增的计时值, 一般用来算时间差值
+            try:
+                # 定义限流窗口：60秒内最多请求100次
+                while True:
+                    now = time.monotonic()  # 返回一个只会单调递增的计时值, 一般用来算时间差值
 
-                # 删除已经离开时间窗口的请求记录 第一次循环是空窗口, 要跳出循环
-                while window and now - window[0] >= window_time:
-                    window.popleft()
+                    # 删除已经离开时间窗口的请求记录 第一次循环是空窗口, 要跳出循环
+                    while window and now - window[0] >= window_time:
+                        window.popleft()
 
-                # 当前窗口不满100次, 有空位，可以发送请求
-                if len(window) < window_size:
-                    break
+                    # 当前窗口不满100次, 有空位，可以发送请求
+                    if len(window) < window_size:
+                        break
 
-                # [拦截等待] 当队列满100个请求, 开始等待最早的一次请求离开时间窗口, (now - window[0])表示第一个元素已经过去了多长时间
-                wait_time = window_time - (now - window[0])
-                time.sleep(max(wait_time, 0))
+                    # [拦截等待] 当队列满100个请求, 开始等待最早的一次请求离开时间窗口, (now - window[0])表示第一个元素已经过去了多长时间
+                    wait_time = window_time - (now - window[0])
+                    time.sleep(max(wait_time, 0))
 
-            # 有空位, 记录本次请求开始时间, 开始发新的一个请求
-            window.append(time.monotonic())
+                # 有空位, 记录本次请求开始时间, 开始发新的一个请求
+                window.append(time.monotonic())
 
-            # 把图片内容转base64编码
-            with open(image_path, "rb") as f:
-                f_bytes = f.read()
-                image_base64_str = base64.b64encode(f_bytes).decode("utf-8")
-            # 请求大模型
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"""这是"{file_title}"文件中的一张图片，图片上文部分为"{context[0]}"，下文部分为"{context[1]}"，请用中文简要总结这张图片的内容，用于 Markdown 图片标题。不要让我选择, 直接给答案"""
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{image_base64_str}"
+                # 把图片内容转base64编码
+                with open(image_path, "rb") as f:
+                    f_bytes = f.read()
+                    image_base64_str = base64.b64encode(f_bytes).decode("utf-8")
+                # 请求大模型
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"""这是"{file_title}"文件中的一张图片，图片上文部分为"{context[0]}"，下文部分为"{context[1]}"，请用中文简要总结这张图片的内容，用于 Markdown 图片标题。不要让我选择, 直接给答案"""
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{image_base64_str}"
+                                }
                             }
-                        }
-                    ]
-                }
-            ]
-            content = llm.invoke(messages).content
+                        ]
+                    }
+                ]
+                content = llm.invoke(messages).content
 
-            logger.info(f"图片[{image_path}]已处理, 图片摘要[{content}]")
-            # 组装结果
-            images_summary.append({
-                "image_path":image_path,
-                "image_name": Path(image_path).name,
-                "image_summary":content,
-            })
+                logger.info(f"图片[{image_path}]已处理, 图片摘要[{content}]")
+                # 组装结果
+                images_summary.append({
+                    "image_path":image_path,
+                    "image_name": Path(image_path).name,
+                    "image_summary":content,
+                })
+            except Exception as e:
+                logger.error(f"发生未知异常, 图片摘要赋予默认值. {e}")
+                images_summary.append({
+                    "image_path": image_path,
+                    "image_name": Path(image_path).name,
+                    "image_summary": "图片摘要",
+                })
 
         logger.info("获取所有md图片摘要完成")
         return images_summary
