@@ -47,7 +47,7 @@ class NodeMDImg(NodeBase):
         images_summary = self.get_images_summary(list_image)
 
         # 图片写入MinIO, 获取url地址
-        self.wirte_images_to_minio(file_title, images_summary)
+        self.upload_images_to_minio(file_title, images_summary)
 
         # 图片摘要和url地址回写到md文档中图片对应位置
         md_content = self.write_md_content(md_content, images_summary)
@@ -146,8 +146,9 @@ class NodeMDImg(NodeBase):
         logger.info("获取md图片+上下文完成")
         return valid_images
 
-    def get_images_summary(self, list_image: List[Tuple[str, str, Tuple[str, str]]], window_time=60, window_size=100) -> \
-            List[dict]:
+    def get_images_summary(self,
+                           list_image: List[Tuple[str, str, Tuple[str, str]]],
+                           window_time=60, window_size=100) -> List[dict]:
         """设置限流窗口机制, 请求大模型, 获取图片摘要"""
         logger.info("获取md图片摘要开始")
         images_summary = []
@@ -226,11 +227,13 @@ class NodeMDImg(NodeBase):
         logger.info("获取所有md图片摘要完成")
         return images_summary
 
-    def wirte_images_to_minio(self, file_title: str, images_summary: List[dict]):
+    def upload_images_to_minio(self, file_title: str, images_summary: List[dict]):
         # 构造MinIO存放图片的路径 bucket/file_title/图片
         upload_path = f"{Path(KBImportConfig.MINIO_IMG_DIR)}/{file_title}".replace(" ", "")
 
+        # MinIO客户端
         client = get_minio_client()
+
         # 先删除upload_path整个路径(幂等操作)
         self.delete_minio_objects(client, upload_path)
 
