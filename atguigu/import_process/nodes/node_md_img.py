@@ -120,7 +120,7 @@ class NodeMDImg(NodeBase):
             context_len=100
     ) -> List[Tuple[str, str, Tuple[str, str]]]:
         """提取Markdown图片，并获取忽略其他图片后的前后文。"""
-
+        logger.info("获取md图片+上下文开始")
         md_path_obj = Path(md_path)
 
         image_extensions = {
@@ -152,12 +152,13 @@ class NodeMDImg(NodeBase):
         for match in matches:
             image_relative_path = match.group("path").strip()
             image_path_obj = md_path_obj.parent / image_relative_path
-
+            logger.warning(str(image_path_obj))
             # 过滤不支持的格式和不存在的图片
             if (
                     image_path_obj.suffix.lower() not in image_extensions
                     or not image_path_obj.is_file()
             ):
+                logger.warning(f"图片[{str(image_path_obj)}], 在md文件中不存在或格式不支持, 不进行处理")
                 continue
 
             # 图片在原始Markdown中的完整位置
@@ -180,7 +181,7 @@ class NodeMDImg(NodeBase):
                 str(image_path_obj),
                 (pre_content, post_content)
             ))
-
+        logger.info("获取md图片+上下文完成")
         return valid_images
 
     def get_images_summary(self, list_image: List[Tuple[str, str, Tuple[str, str]]], window_time=60, window_size=100) -> \
