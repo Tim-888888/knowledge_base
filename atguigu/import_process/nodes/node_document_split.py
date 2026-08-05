@@ -6,7 +6,7 @@
 import json
 import re
 from pathlib import Path
-from typing import List
+from typing import List, Any
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -14,6 +14,7 @@ from atguigu.import_process.base import NodeBase
 from atguigu.import_process.state import ImportGraphState
 from atguigu.tool.json_format_util import parse_json
 from atguigu.tool.logger import logger
+from atguigu.tool.markdown_chunker import MarkdownChunker
 
 
 class NodeDocumentSplit(NodeBase):
@@ -58,16 +59,38 @@ class NodeDocumentSplit(NodeBase):
         md_content, md_path, file_title = self.init_param(state)
 
         # 粗切分: 按md结构切分 -> 按标题和代码围栏做切分
-        md_section_list = self.md_section_split(file_title, md_content)
+        # md_section_list = self.md_section_split(file_title, md_content)
+
 
         # 精细切分: 长切短合, 用递归切分器切分
-        chunks = self.md_fine_split(md_section_list)
+        # chunks = self.md_fine_split(md_section_list)
+
+        chunks = self.smart_split_chunk(file_title, md_content)
 
         # 落盘json测试用
-        with open(Path(md_path).parent / (md_path + ".json"), mode="w", encoding='utf-8') as f:
+        with open(Path(md_path).parent / (Path(md_path).stem + ".json"), mode="w", encoding='utf-8') as f:
             f.write(parse_json(chunks))
 
         return {"chunks": chunks}
+
+    def smart_split_chunk(self, file_title: str, md_content: str, max_chunk_size = 500, min_chunk_size=200) -> list[dict[str, str | None | Any]]:
+        chunker = MarkdownChunker(
+            max_chunk_size=max_chunk_size,
+            min_chunk_size=min_chunk_size
+        )
+        chunks = chunker.split_text(
+            md_content,
+            extra_metadata={
+                "file_title": file_title,
+            }
+        )
+        print(len(chunks))
+
+        chunks = [{
+            "file_title": chunk.metadata.get("file_title"),
+            "chunk": chunk.page_content,
+        } for chunk in chunks]
+        return chunks
 
     def init_param(self, state: ImportGraphState):
         md_content = state.get("md_content")
@@ -221,9 +244,10 @@ class NodeDocumentSplit(NodeBase):
 if __name__ == '__main__':
     node = NodeDocumentSplit()
     init_state = {
-        # "md_path": r"E:\output\hak180产品安全手册\hak180产品安全手册_new.md",
-        "md_path": r"E:\output\Aolynk CB304n Cable网桥 用户手册-5W100-整本手册\Aolynk CB304n Cable网桥 用户手册-5W100-整本手册.md",
-        "file_title": "Aolynk CB304n Cable网桥 用户手册-5W100-整本手册",
+        "md_path": r"E:\output\hak180产品安全手册\hak180产品安全手册_new.md",
+        # "md_path": r"E:\output\Aolynk CB304n Cable网桥 用户手册-5W100-整本手册\Aolynk CB304n Cable网桥 用户手册-5W100-整本手册.md",
+        "file_title": "hak180产品安全手册",
+        # "file_title": "Aolynk CB304n Cable网桥 用户手册-5W100-整本手册",
         "md_content": "md_content"
     }
 

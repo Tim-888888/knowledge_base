@@ -92,7 +92,7 @@ class MarkdownChunker:
         min_chunk_size: int = 100,
         length_function: LengthFunction = len,
         *,
-        merge_across_h2: bool = True,
+        merge_across_h2: bool = False,
         include_front_matter: bool = False,
     ) -> None:
         """初始化 Markdown 切分器。
@@ -210,7 +210,10 @@ class MarkdownChunker:
                     "chunk_length": self._length(draft.content),
                 }
             )
-            documents.append(Document(page_content=draft.content, metadata=metadata))
+            h1= draft.h1 + "\n\n" if draft.h1 else ""
+            h2= draft.h2 + "\n\n" if draft.h2 else ""
+            page_content = h1 + h2 + draft.content
+            documents.append(Document(page_content=page_content, metadata=metadata))
 
         return documents
 
