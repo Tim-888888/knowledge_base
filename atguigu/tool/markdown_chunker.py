@@ -36,6 +36,7 @@ class _Section:
     h1: str | None  # 当前一级标题；文档开头可能没有一级标题。
     h2: str | None  # 当前二级标题；一级标题直属内容没有二级标题。
     blocks: list[_MarkdownBlock] = field(default_factory=list)  # section 内的结构块。
+    section_index: int = -1  # section 在原文中的顺序，用于区分同名标题。
 
 
 @dataclass(slots=True)
@@ -45,6 +46,7 @@ class _ChunkDraft:
     content: str  # 最终放入 LangChain Document.page_content 的文本。
     h1: str | None  # 切片所属的一级标题。
     h2: str | None  # 切片只属于一个二级标题时保存标题，否则为 None。
+    section_indexes: list[int]  # 切片覆盖的 section 编号；跨 H2 合并时可能有多个。
     section_paths: list[str]  # 合并短块后，一个切片可能覆盖多条标题路径。
     start_line: int  # 切片内容在原文中覆盖的最小起始行。
     end_line: int  # 切片内容在原文中覆盖的最大结束行。
@@ -192,15 +194,37 @@ class MarkdownChunker:
         drafts = self._merge_short_chunks(drafts)
         common_metadata = extra_metadata or {}
 
+        # 预先计算每个 chunk 在所属标题 section 中的位置。
+        # 使用 section_index 分组，可以正确区分文档中路径相同的重复标题。
+        section_positions = self._build_section_positions(drafts, sections)
+
         # 最后将内部对象转换为 LangChain Document，并统一分配连续索引。
         documents: list[Document] = []
         for index, draft in enumerate(drafts):
+            positions = section_positions[index]
+
+            # 普通 chunk 只属于一个 section，可以直接暴露单值位置字段。
+            # 跨 H2 合并的 chunk 没有唯一的最近标题，完整归属放在 section_positions 中。
+            single_position = positions[0] if len(positions) == 1 else None
             metadata = dict(common_metadata)
             metadata.update(
                 {
                     "chunk_index": index,
                     "h1": draft.h1,
                     "h2": draft.h2,
+                    "nearest_heading": (
+                        single_position["nearest_heading"] if single_position else None
+                    ),
+                    "nearest_heading_level": (
+                        single_position["nearest_heading_level"] if single_position else None
+                    ),
+                    "section_chunk_index": (
+                        single_position["section_chunk_index"] if single_position else None
+                    ),
+                    "section_chunk_count": (
+                        single_position["section_chunk_count"] if single_position else None
+                    ),
+                    "section_positions": positions,
                     "section_path": " | ".join(draft.section_paths),
                     "section_paths": list(draft.section_paths),
                     "start_line": draft.start_line,
@@ -216,6 +240,65 @@ class MarkdownChunker:
             documents.append(Document(page_content=page_content, metadata=metadata))
 
         return documents
+
+    @staticmethod
+    def _build_section_positions(
+        drafts: Sequence[_ChunkDraft],
+        sections: Sequence[_Section],
+    ) -> list[list[dict[str, Any]]]:
+        """计算每个切片在其所属标题 section 中的顺序和总数。
+
+        返回列表与 drafts 一一对应。普通切片只有一条位置记录；跨 H2 合并的
+        切片会为每个真实来源 section 保存一条记录。
+        """
+
+        section_lookup = {
+            section.section_index: section
+            for section in sections
+        }
+
+        # 一个跨 section 的合并切片，会分别算作每个来源 section 中的一个 chunk。
+        section_chunk_counts: dict[int, int] = {}
+        for draft in drafts:
+            for section_index in draft.section_indexes:
+                section_chunk_counts[section_index] = (
+                    section_chunk_counts.get(section_index, 0) + 1
+                )
+
+        # 按原文顺序累计当前 section 已经出现了多少个 chunk。
+        section_seen_counts: dict[int, int] = {}
+        all_positions: list[list[dict[str, Any]]] = []
+
+        for draft in drafts:
+            draft_positions: list[dict[str, Any]] = []
+            for section_index in draft.section_indexes:
+                section = section_lookup[section_index]
+                section_seen_counts[section_index] = (
+                    section_seen_counts.get(section_index, 0) + 1
+                )
+
+                # 有 H2 时离正文最近的是 H2，否则回退到 H1；文档开头可能都没有。
+                nearest_heading = section.h2 or section.h1
+                nearest_heading_level = 2 if section.h2 else (1 if section.h1 else None)
+
+                draft_positions.append(
+                    {
+                        "section_path": MarkdownChunker._section_path(
+                            section.h1,
+                            section.h2,
+                        ),
+                        "h1": section.h1,
+                        "h2": section.h2,
+                        "nearest_heading": nearest_heading,
+                        "nearest_heading_level": nearest_heading_level,
+                        # section 内的位置使用 1 基编号，直接对应“第几个 chunk”。
+                        "section_chunk_index": section_seen_counts[section_index],
+                        "section_chunk_count": section_chunk_counts[section_index],
+                    }
+                )
+            all_positions.append(draft_positions)
+
+        return all_positions
 
     def _parse_blocks(self, md_content: str) -> list[_MarkdownBlock]:
         """把原文解析为顶层结构块，同时保留原始 Markdown 和行号。"""
@@ -382,7 +465,14 @@ class MarkdownChunker:
 
             nonlocal current_blocks
             if current_blocks:
-                sections.append(_Section(current_h1, current_h2, current_blocks))
+                sections.append(
+                    _Section(
+                        h1=current_h1,
+                        h2=current_h2,
+                        blocks=current_blocks,
+                        section_index=len(sections),
+                    )
+                )
                 current_blocks = []
 
         for block in blocks:
@@ -752,6 +842,7 @@ class MarkdownChunker:
             content=content,
             h1=section.h1,
             h2=section.h2,
+            section_indexes=[section.section_index],
             section_paths=[self._section_path(section.h1, section.h2)],
             # blocks 按原文顺序排列，所以首尾块直接给出覆盖行号。
             start_line=blocks[0].start_line,
@@ -773,6 +864,7 @@ class MarkdownChunker:
             content=piece,
             h1=section.h1,
             h2=section.h2,
+            section_indexes=[section.section_index],
             section_paths=[self._section_path(section.h1, section.h2)],
             start_line=block.start_line,
             end_line=block.end_line,
@@ -912,6 +1004,10 @@ class MarkdownChunker:
             content=content,
             h1=first.h1,
             h2=h2,
+            section_indexes=list(dict.fromkeys([
+                *first.section_indexes,
+                *second.section_indexes,
+            ])),
             section_paths=self._unique([*first.section_paths, *second.section_paths]),
             start_line=min(first.start_line, second.start_line),
             end_line=max(first.end_line, second.end_line),
