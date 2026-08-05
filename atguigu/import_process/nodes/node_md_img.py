@@ -28,6 +28,7 @@ class NodeMDImg(NodeBase):
     md里面图片的格式 ![](images/f3349cded08d6686a93d0a81b9a64ec1e50d9a82cbb88541b37027f085813a15.jpg)
     """
 
+    # 供NodeBase和LangGraph日志识别当前节点
     @property
     def name(self) -> str:
         return "node_md_img"
@@ -39,6 +40,7 @@ class NodeMDImg(NodeBase):
         # 获取有效的md图片, 过滤不存在md里的图片, 获取图片的前后文
         list_image = self.get_md_images(md_path, md_content, file_title)
 
+        # 没有可处理图片时提前结束，保留原始Markdown内容
         if not list_image:
             logger.info("未检测到md文件使用了图片")
             return {"md_content": md_content}
@@ -52,14 +54,21 @@ class NodeMDImg(NodeBase):
         # 图片摘要和url地址回写到md文档中图片对应位置
         md_content = self.write_md_content(md_content, images_summary)
 
+        # md_content落盘, 给下一个节点用或者单元测试
+        with open(Path(md_path).parent / f"{file_title}_new.md", mode="w", encoding="utf-8") as f:
+            f.write(md_content)
+
         return {"md_content": md_content}
 
     def parameter_validation(self, state: ImportGraphState) -> Path:
         logger.info("参数校验开始")
+
+        # Markdown路径是读取正文和定位相对图片目录的基础参数
         md_path = state.get("md_path")
         if not md_path:
             raise RuntimeError(f"md_path 必须提供")
 
+        # 文件标题会参与VLM提示词和MinIO对象前缀的构造
         file_title = state.get("file_title")
         if not file_title:
             raise RuntimeError(f"file_title 必须提供")
@@ -69,6 +78,7 @@ class NodeMDImg(NodeBase):
         if not md_path_obj.exists():
             raise RuntimeError(f"md文件不存在, 请检查路径: {md_path}")
 
+        # 一次性读取正文，后续步骤都在内存中提取上下文和替换图片标签
         with open(md_path, "r", encoding="utf-8") as f:
             md_content = f.read()
         logger.info("参数校验完成")
@@ -85,6 +95,7 @@ class NodeMDImg(NodeBase):
         logger.info("获取md图片+上下文开始")
         md_path_obj = Path(md_path)
 
+        # 只让VLM处理当前流程允许上传到MinIO的图片类型
         image_extensions = {
             ".jpg", ".jpeg", ".png",
             ".gif", ".bmp", ".webp"
@@ -109,10 +120,13 @@ class NodeMDImg(NodeBase):
 
         masked_content = "".join(masked_chars)
 
+        # 元素结构为：(文件标题, 图片绝对路径, (上文, 下文))
         valid_images = []
 
         for match in matches:
+            # Markdown图片通常使用相对路径，需要以Markdown所在目录为基准解析
             image_relative_path = match.group("path").strip()
+            # md里面解析出来的图片绝对路径
             image_path_obj = md_path_obj.parent / image_relative_path
             logger.warning(str(image_path_obj))
             # 过滤不支持的格式和不存在的图片
@@ -138,6 +152,7 @@ class NodeMDImg(NodeBase):
             pre_content = pre_content[-context_len:]
             post_content = post_content[:context_len]
 
+            # 保留文档顺序，方便后续摘要和Markdown回写一一对应
             valid_images.append((
                 file_title,
                 str(image_path_obj),
@@ -151,7 +166,11 @@ class NodeMDImg(NodeBase):
                            window_time=60, window_size=100) -> List[dict]:
         """设置限流窗口机制, 请求大模型, 获取图片摘要"""
         logger.info("获取md图片摘要开始")
+
+        # 汇总每张图片的本地路径、文件名和VLM摘要
         images_summary = []
+
+        # deque按请求发生顺序保存时间点，队首始终是窗口内最早的请求
         window = deque()
 
         # 创建聊天完成请求
@@ -207,6 +226,8 @@ class NodeMDImg(NodeBase):
                         ]
                     }
                 ]
+
+                # 同步调用VLM，并从AIMessage中取出文本摘要
                 content = llm.invoke(messages).content
 
                 logger.info(f"图片[{image_path}]已处理, 图片摘要[{content}]")
@@ -217,6 +238,7 @@ class NodeMDImg(NodeBase):
                     "image_summary": content,
                 })
             except Exception as e:
+                # 单张图片失败时使用默认摘要，避免中断整批文档导入
                 logger.error(f"发生未知异常, 图片摘要赋予默认值. {e}")
                 images_summary.append({
                     "image_path": image_path,
@@ -228,6 +250,8 @@ class NodeMDImg(NodeBase):
         return images_summary
 
     def upload_images_to_minio(self, file_title: str, images_summary: List[dict]):
+        """清理文档原有图片对象，上传本批图片并回填访问地址。"""
+
         # 构造MinIO存放图片的路径 bucket/file_title/图片
         upload_path = f"{Path(KBImportConfig.MINIO_IMG_DIR)}/{file_title}".replace(" ", "")
 
@@ -241,50 +265,73 @@ class NodeMDImg(NodeBase):
         self.upload_images(client, images_summary, upload_path)
 
     def delete_minio_objects(self, client: Minio | None, upload_path: str):
+        """删除MinIO中以upload_path为前缀的全部对象。"""
+
         try:
+            # recursive=True会递归列出该对象前缀下的所有文件
             list_objects = client.list_objects(
                 bucket_name=KBImportConfig.MINIO_BUCKET_NAME,
                 prefix=upload_path,
                 recursive=True
             )
+
+            # remove_objects接收DeleteObject序列进行批量删除
             delete_obj_list = [DeleteObject(obj.object_name) for obj in list_objects]
             if delete_obj_list:
                 errors = client.remove_objects(
                     bucket_name=KBImportConfig.MINIO_BUCKET_NAME,
                     delete_object_list=delete_obj_list
                 )
+
+                # 删除结果是惰性迭代器，必须遍历才能收集服务端返回的错误
                 for error in errors:
                     logger.error(f"MinIO 删除失败, {error}")
         except Exception as e:
             logger.error(f"MinIO 删除失败, {e}")
 
     def upload_images(self, client: Minio, images_summary: List[dict], upload_path: str):
+        """逐张上传图片，并把永久访问地址写回对应摘要字典。"""
+
         for summary_dict in images_summary:
             image_path = summary_dict['image_path']
             image_name = summary_dict['image_name']
+
+            # 对象名由文档前缀和图片文件名共同组成
             object_name = f"{upload_path}/{image_name}"
+
+            # fput_object直接从本地文件路径上传，并返回实际写入的对象信息
             result = client.fput_object(
                 KBImportConfig.MINIO_BUCKET_NAME, object_name, image_path
             )
+
+            # 当前Bucket按公开读取设计，因此使用固定地址而非预签名地址
             url = f"http://{KBImportConfig.MINIO_ENDPOINT}/{KBImportConfig.MINIO_BUCKET_NAME}/{result.object_name}"
+
+            # 原地补充URL，供后续Markdown替换步骤使用
             summary_dict['image_url'] = url
 
     def write_md_content(self, md_content: str, images_summary: List[dict]) -> str:
         """正则替换md图片摘要和MinIO的url"""
+
+        # 根据图片文件名定位原标签，并保留原有文档顺序和其他正文
         for summary_dict in images_summary:
             image_name = summary_dict['image_name']
             image_summary = summary_dict['image_summary']
             image_url = summary_dict['image_url']
 
+            # 匹配引用当前文件名的完整Markdown图片语法
             pattern = re.compile(
                 r"!\[.*?\]\(.*?" + re.escape(image_name) + r"\)",
                 re.IGNORECASE
             )
+
+            # 使用替换函数，避免URL中的反斜杠被re.sub当成转义序列
             md_content = pattern.sub(lambda m: f"![{image_summary}]({image_url})", md_content)
         return md_content
 
 
 if __name__ == '__main__':
+    # 本地调试入口：构造一份最小状态并直接执行节点
     node = NodeMDImg()
     init_state = {
         "pdf_path": "E:\\output\\hak180产品安全手册.pdf",
