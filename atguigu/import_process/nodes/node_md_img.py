@@ -55,10 +55,11 @@ class NodeMDImg(NodeBase):
         md_content = self.write_md_content(md_content, images_summary)
 
         # md_content落盘, 给下一个节点用或者单元测试
-        with open(Path(md_path).parent / f"{file_title}_new.md", mode="w", encoding="utf-8") as f:
+        md_new_path = str(Path(md_path).parent / f"{file_title}_new.md")
+        with open(md_new_path, mode="w", encoding="utf-8") as f:
             f.write(md_content)
 
-        return {"md_content": md_content}
+        return {"md_content": md_content, "md_path": md_new_path}
 
     def parameter_validation(self, state: ImportGraphState) -> Path:
         logger.info("参数校验开始")
@@ -215,7 +216,7 @@ class NodeMDImg(NodeBase):
                         "content": [
                             {
                                 "type": "text",
-                                "text": f"""这是"{file_title}"文件中的一张图片，图片上文部分为"{context[0]}"，下文部分为"{context[1]}"，请用中文简要总结这张图片的内容，用于 Markdown 图片标题。不要让我选择, 直接给答案"""
+                                "text": f"""这是"{file_title}"文件中的一张图片，图片上文部分为"{context[0]}"，下文部分为"{context[1]}"，请用中文简要总结这张图片的内容，用于 Markdown 图片标题。不要让我选择, 直接给答案. 输出纯文本, 不要输出特殊符号和正则符号"""
                             },
                             {
                                 "type": "image_url",
