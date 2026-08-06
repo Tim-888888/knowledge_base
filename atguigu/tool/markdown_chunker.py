@@ -6,7 +6,7 @@ import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from langchain_core.documents import Document
 from markdown_it import MarkdownIt
@@ -54,6 +54,15 @@ class _ChunkDraft:
     image_refs: list[str]  # 切片中引用的 Markdown 图片地址。
 
 
+@dataclass(slots=True)
+class _ChunkOverlap:
+    """某个切片从前一个切片继承的重叠上下文。"""
+
+    content: str = ""  # 实际添加到当前切片开头的重叠文本。
+    from_chunk_index: int | None = None  # 重叠文本来自哪个全局 chunk。
+    sentence_count: int = 0  # sentence 模式下实际复制的完整句子数量。
+
+
 class MarkdownChunker:
     """按照标题、结构块、段落和句子的优先级切分 Markdown。
 
@@ -66,8 +75,10 @@ class MarkdownChunker:
     4. 对相邻的过短切片进行合并，但默认绝不跨越一级标题边界。
 
     ``length_function`` 默认使用 ``len``，此时长度表示字符数。用于向量化时，
-    建议传入 Embedding 模型对应 tokenizer 的计数函数，使
-    ``max_chunk_size`` 和 ``min_chunk_size`` 表示 Token 数。
+    建议传入 Embedding 模型对应 tokenizer 的计数函数，使长度配置表示 Token 数。
+
+    ``chunk_overlap`` 是相邻切片之间的重叠长度预算。``token`` 模式允许从
+    句子中间截取上一切片的尾部；``sentence`` 模式只复制预算内的完整句子。
     """
 
     # 中文和英文句末标点。标点后的右引号、右括号也归入当前句子。
@@ -78,6 +89,9 @@ class MarkdownChunker:
 
     # Markdown 围栏代码块可以使用至少三个反引号或波浪号。
     _FENCE_RE = re.compile(r"^[ \t]*(?P<marker>`{3,}|~{3,})")
+
+    # 从这些结构的尾部截取文本会破坏 Markdown 语法，因此不参与正文重叠。
+    _OVERLAP_UNSAFE_BLOCK_TYPES = {"code", "table", "list", "image", "html"}
 
     # 提取 Markdown 图片地址；尖括号形式允许路径中包含空格。
     _IMAGE_RE = re.compile(
@@ -94,6 +108,8 @@ class MarkdownChunker:
         min_chunk_size: int = 100,
         length_function: LengthFunction = len,
         *,
+        chunk_overlap: int = 0,
+        overlap_mode: Literal["sentence", "token"] = "token",
         merge_across_h2: bool = False,
         include_front_matter: bool = False,
     ) -> None:
@@ -103,6 +119,8 @@ class MarkdownChunker:
             max_chunk_size: 单个切片允许的最大长度。
             min_chunk_size: 低于该长度的切片会尝试和相邻切片合并。
             length_function: 长度计算函数，可以按字符数或 Token 数计算。
+            chunk_overlap: 相邻切片重叠的长度预算，0 表示关闭重叠。
+            overlap_mode: ``sentence`` 保留完整句子，``token`` 按长度截取尾部。
             merge_across_h2: 是否允许同一 H1 下不同 H2 的短切片合并。
             include_front_matter: 是否把文档开头的 YAML Front Matter 放入切片。
 
@@ -117,12 +135,26 @@ class MarkdownChunker:
             raise ValueError("min_chunk_size 不能小于 0")
         if min_chunk_size > max_chunk_size:
             raise ValueError("min_chunk_size 不能大于 max_chunk_size")
+        if chunk_overlap < 0:
+            raise ValueError("chunk_overlap 不能小于 0")
+        if chunk_overlap >= max_chunk_size:
+            raise ValueError("chunk_overlap 必须小于 max_chunk_size")
+        if overlap_mode not in {"sentence", "token"}:
+            raise ValueError("overlap_mode 只能是 sentence 或 token")
         if length_function("") < 0:
             raise ValueError("length_function 不能返回负数")
 
+        # 切分正文时提前预留重叠空间，使“正文 + 重叠”仍不超过最大长度。
+        content_max_size = max_chunk_size - chunk_overlap
+        if min_chunk_size > content_max_size:
+            raise ValueError("min_chunk_size 不能大于扣除 chunk_overlap 后的可用长度")
+
         self.max_chunk_size = max_chunk_size
+        self._content_max_size = content_max_size
         self.min_chunk_size = min_chunk_size
         self.length_function = length_function
+        self.chunk_overlap = chunk_overlap
+        self.overlap_mode = overlap_mode
         self.merge_across_h2 = merge_across_h2
         self.include_front_matter = include_front_matter
 
@@ -162,6 +194,7 @@ class MarkdownChunker:
     def split_text(
         self,
         md_content: str,
+        add_overlap_to_content: bool = False,
         *,
         extra_metadata: dict[str, Any] | None = None,
     ) -> list[Document]:
@@ -194,6 +227,9 @@ class MarkdownChunker:
         drafts = self._merge_short_chunks(drafts)
         common_metadata = extra_metadata or {}
 
+        # 第五步：为同一 section 中的相邻切片补充上一切片的尾部上下文。
+        overlaps = self._build_chunk_overlaps(drafts)
+
         # 预先计算每个 chunk 在所属标题 section 中的位置。
         # 使用 section_index 分组，可以正确区分文档中路径相同的重复标题。
         section_positions = self._build_section_positions(drafts, sections)
@@ -202,6 +238,7 @@ class MarkdownChunker:
         documents: list[Document] = []
         for index, draft in enumerate(drafts):
             positions = section_positions[index]
+            overlap = overlaps[index]
 
             # 普通 chunk 只属于一个 section，可以直接暴露单值位置字段。
             # 跨 H2 合并的 chunk 没有唯一的最近标题，完整归属放在 section_positions 中。
@@ -213,7 +250,7 @@ class MarkdownChunker:
                     "h1": draft.h1,
                     "h2": draft.h2,
                     "nearest_heading": (
-                        single_position["nearest_heading"] if single_position else None
+                        (single_position["nearest_heading"] if single_position else None) or "无标题"
                     ),
                     "nearest_heading_level": (
                         single_position["nearest_heading_level"] if single_position else None
@@ -224,6 +261,12 @@ class MarkdownChunker:
                     "section_chunk_count": (
                         single_position["section_chunk_count"] if single_position else None
                     ),
+                    "chunk_overlap": self.chunk_overlap,
+                    "overlap_mode": self.overlap_mode,
+                    "overlap_from_chunk_index": overlap.from_chunk_index,
+                    "overlap_length": self._length(overlap.content),
+                    "overlap_sentence_count": overlap.sentence_count,
+                    "overlap_content": overlap.content + "\n\n" if overlap.content else "",
                     "section_positions": positions,
                     "section_path": " | ".join(draft.section_paths),
                     "section_paths": list(draft.section_paths),
@@ -236,10 +279,103 @@ class MarkdownChunker:
             )
             h1= draft.h1 + "\n\n" if draft.h1 else ""
             h2= draft.h2 + "\n\n" if draft.h2 else ""
-            page_content = h1 + h2 + draft.content
+            overlap_content = metadata.get('overlap_content') if add_overlap_to_content else ""
+            page_content = h1 + h2 + f"position:{metadata.get('section_chunk_index')}\n\n" + overlap_content + draft.content
             documents.append(Document(page_content=page_content, metadata=metadata))
 
         return documents
+
+    def _build_chunk_overlaps(
+        self,
+        drafts: Sequence[_ChunkDraft],
+    ) -> list[_ChunkOverlap]:
+        """为每个切片计算来自同一 section 前一个切片的重叠文本。"""
+
+        overlaps = [_ChunkOverlap() for _ in drafts]
+        if self.chunk_overlap == 0:
+            return overlaps
+
+        for index in range(1, len(drafts)):
+            previous = drafts[index - 1]
+            current = drafts[index]
+
+            # 只有两个普通切片唯一且明确地属于同一个 section 时才添加重叠。
+            # 跨 H2 合并的切片包含多个 section，不继续传播可能混杂的上下文。
+            if (
+                len(previous.section_indexes) != 1
+                or len(current.section_indexes) != 1
+                or previous.section_indexes[0] != current.section_indexes[0]
+            ):
+                continue
+
+            # 标题已经通过 h1/h2 注入每个切片，无需把标题正文再次当作 overlap。
+            if set(previous.block_types) <= {"heading"}:
+                continue
+
+            # 避免截断代码围栏、表格、列表等完整 Markdown 结构。
+            if self._OVERLAP_UNSAFE_BLOCK_TYPES.intersection(previous.block_types):
+                continue
+
+            # 原子结构块可能因语法完整性而允许超过正文预算，此时不能再追加重叠。
+            available = self.max_chunk_size - self._length(current.content)
+            overlap_budget = min(self.chunk_overlap, max(available, 0))
+            if overlap_budget == 0:
+                continue
+
+            content, sentence_count = self._extract_overlap_tail(
+                previous.content,
+                overlap_budget,
+            )
+            if not content:
+                continue
+
+            overlaps[index] = _ChunkOverlap(
+                content=content,
+                from_chunk_index=index - 1,
+                sentence_count=sentence_count,
+            )
+
+        return overlaps
+
+    def _extract_overlap_tail(self, text: str, budget: int) -> tuple[str, int]:
+        """按照配置模式提取不超过长度预算的上一切片尾部。"""
+
+        if not text or budget <= 0:
+            return "", 0
+
+        if self.overlap_mode == "sentence":
+            sentences = self._sentence_units(text)
+            selected: list[str] = []
+
+            # 从最后一句向前选择，保证取得的是离当前切片最近的完整句子。
+            for sentence in reversed(sentences):
+                candidate = "".join([sentence, *selected])
+                if self._length(candidate) > budget:
+                    break
+                selected.insert(0, sentence)
+
+            content = "".join(selected).strip()
+            return content, len(selected) if content else 0
+
+        # token 模式允许从句子中间开始，通过二分查找取得预算内最长文本后缀。
+        start = self._smallest_fitting_suffix_start(text, budget)
+        return text[start:].strip(), 0
+
+    def _smallest_fitting_suffix_start(self, text: str, budget: int) -> int:
+        """寻找使文本后缀不超过长度预算的最小字符起始下标。"""
+
+        low = 0
+        high = len(text)
+        best = len(text)
+
+        while low <= high:
+            middle = (low + high) // 2
+            if self._length(text[middle:]) <= budget:
+                best = middle
+                high = middle - 1
+            else:
+                low = middle + 1
+        return best
 
     @staticmethod
     def _build_section_positions(
@@ -508,7 +644,7 @@ class MarkdownChunker:
 
         for block in section.blocks:
             # 单个结构块已经超长，无法再和其他块打包，需要按类型细分。
-            if self._length(block.content) > self.max_chunk_size:
+            if self._length(block.content) > self._content_max_size:
                 flush_buffer()
                 for piece in self._split_oversized_block(block):
                     drafts.append(self._draft_from_piece(section, block, piece))
@@ -516,7 +652,7 @@ class MarkdownChunker:
 
             # 先试放当前块；若组合后超长，就先结算已有缓冲区。
             candidate = self._join_blocks([*buffered, block])
-            if buffered and self._length(candidate) > self.max_chunk_size:
+            if buffered and self._length(candidate) > self._content_max_size:
                 flush_buffer()
             # 当前块本身没有超长，因此一定可以作为新缓冲区的第一个块。
             buffered.append(block)
@@ -601,7 +737,7 @@ class MarkdownChunker:
         items = ["".join(lines[start:end]) for start, end in zip(starts, starts[1:])]
         expanded: list[str] = []
         for item in items:
-            if self._length(item) <= self.max_chunk_size:
+            if self._length(item) <= self._content_max_size:
                 expanded.append(item)
             else:
                 # 单个列表项自身超长时，再按句子拆，并在每片重复列表标记。
@@ -645,7 +781,7 @@ class MarkdownChunker:
 
         # 如果表头自己已经达到上限，再切会破坏表格语法。
         # 此时优先保留完整表格，允许它暂时超过配置长度。
-        if self._length(render("")) >= self.max_chunk_size:
+        if self._length(render("")) >= self._content_max_size:
             return [text]
         return self._split_with_renderer(rows, render, separator="\n")
 
@@ -688,7 +824,7 @@ class MarkdownChunker:
         render = lambda payload: f"{opening}\n{payload}\n{closing}"
 
         # 仅开关围栏就达到长度上限时，无法在不破坏语法的情况下继续切。
-        if self._length(render("")) >= self.max_chunk_size:
+        if self._length(render("")) >= self._content_max_size:
             return [text]
 
         # 空代码块无需切分。
@@ -725,11 +861,11 @@ class MarkdownChunker:
             candidate = render(separator.join([*buffered, unit]))
 
             # 加入后超长时，先结算已有单元，再单独处理当前单元。
-            if buffered and self._length(candidate) > self.max_chunk_size:
+            if buffered and self._length(candidate) > self._content_max_size:
                 flush()
 
             # 当前单元套上语法外壳后仍然超长，只能进入字符级兜底切分。
-            if self._length(render(unit)) > self.max_chunk_size:
+            if self._length(render(unit)) > self._content_max_size:
                 flush()
                 chunks.extend(render(part) for part in self._hard_split_payload(unit, render))
             else:
@@ -752,13 +888,13 @@ class MarkdownChunker:
 
             # 尝试把新单元追加到当前缓冲区。
             candidate = buffered + unit
-            if buffered and self._length(candidate) > self.max_chunk_size:
+            if buffered and self._length(candidate) > self._content_max_size:
                 # 组合后超长，先保存旧缓冲区，再从空缓冲区处理当前单元。
                 chunks.append(buffered.strip("\r\n"))
                 buffered = ""
 
             # 一个单元自己就超长时，句子或行级边界已经不够，只能字符兜底。
-            if self._length(unit) > self.max_chunk_size:
+            if self._length(unit) > self._content_max_size:
                 parts = self._hard_split_text(unit)
 
                 # 除最后一片外都已经接近上限，可以直接写入结果。
@@ -823,7 +959,7 @@ class MarkdownChunker:
         while low < high:
             # 向上取中点，避免 low 和 high 相邻时无法继续推进。
             middle = (low + high + 1) // 2
-            if self._length(render(text[:middle])) <= self.max_chunk_size:
+            if self._length(render(text[:middle])) <= self._content_max_size:
                 low = middle
             else:
                 high = middle - 1
@@ -980,7 +1116,7 @@ class MarkdownChunker:
             return False
 
         # 合并后仍然必须不超过最大切片长度。
-        return self._combined_length(first, second) <= self.max_chunk_size
+        return self._combined_length(first, second) <= self._content_max_size
 
     def _combined_length(self, first: _ChunkDraft, second: _ChunkDraft) -> int:
         """计算两个切片按 Markdown 段落形式连接后的实际长度。"""

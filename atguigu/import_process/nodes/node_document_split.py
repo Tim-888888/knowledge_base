@@ -6,7 +6,7 @@
 import json
 import re
 from pathlib import Path
-from typing import List, Any
+from typing import List, Any, Literal
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -73,10 +73,20 @@ class NodeDocumentSplit(NodeBase):
 
         return {"chunks": chunks}
 
-    def smart_split_chunk(self, file_title: str, md_content: str, max_chunk_size = 500, min_chunk_size=200) -> list[dict[str, str | None | Any]]:
+    def smart_split_chunk(
+            self,
+            file_title: str,
+            md_content: str,
+            max_chunk_size=500,
+            min_chunk_size=200,
+            chunk_overlap=50,
+            overlap_mode: Literal["sentence", "token"] = "token"
+    ) -> list[dict[str, str | None | Any]]:
         chunker = MarkdownChunker(
             max_chunk_size=max_chunk_size,
-            min_chunk_size=min_chunk_size
+            min_chunk_size=min_chunk_size,
+            chunk_overlap=chunk_overlap,
+            overlap_mode=overlap_mode,
         )
         chunks = chunker.split_text(
             md_content,
@@ -90,6 +100,12 @@ class NodeDocumentSplit(NodeBase):
             "file_title": chunk.metadata.get("file_title"),
             "nearest_heading_title": chunk.metadata.get("nearest_heading"),
             "nearest_heading_position": chunk.metadata.get("section_chunk_index"),
+            "overlap_content": chunk.metadata.get("overlap_content"),
+            # "chunk_overlap": chunk.metadata.get("chunk_overlap"),
+            # "overlap_mode": chunk.metadata.get("overlap_mode"),
+            # "overlap_from_chunk_index": chunk.metadata.get("overlap_from_chunk_index"),
+            # "overlap_length": chunk.metadata.get("overlap_length"),
+            # "overlap_sentence_count": chunk.metadata.get("overlap_sentence_count"),
             "chunk": chunk.page_content,
             # 保留切分器生成的标题归属、section 内序号和原文行号等信息。
             # "metadata": dict(chunk.metadata),
@@ -219,15 +235,6 @@ class NodeDocumentSplit(NodeBase):
                     "position": 0
                 })
                 continue
-
-            # 超长标题, 单独成块
-            # if len(section_title) >= max_chunk_size:
-            #     chunks.append({
-            #         "file_title": file_title,
-            #         "section_title": section_title,
-            #         "chunk": section_title,
-            #         "position": 0
-            #     })
 
             # 切分逻辑
             chunk_list = splitter.split_text(section_content_without_title)

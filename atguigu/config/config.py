@@ -30,7 +30,7 @@ class KBImportConfig:
     BGE_M3_PATH = os.getenv("BGE_M3_PATH")
     BGE_M3 = os.getenv("BGE_M3")
     BGE_DEVICE = os.getenv("BGE_DEVICE")
-    BGE_FP16 = os.getenv("BGE_FP16")
+    BGE_FP16 = os.getenv("BGE_FP16") in ("1", "True", "true", 1)
     BGE_RERANKER_LARGE = os.getenv("BGE_RERANKER_LARGE")
     BGE_RERANKER_DEVICE = os.getenv("BGE_RERANKER_DEVICE")
     BGE_RERANKER_FP16 = os.getenv("BGE_RERANKER_FP16")
