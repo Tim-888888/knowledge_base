@@ -101,14 +101,7 @@ class NodeDocumentSplit(NodeBase):
             "nearest_heading_title": chunk.metadata.get("nearest_heading"),
             "nearest_heading_position": chunk.metadata.get("section_chunk_index"),
             "overlap_content": chunk.metadata.get("overlap_content"),
-            # "chunk_overlap": chunk.metadata.get("chunk_overlap"),
-            # "overlap_mode": chunk.metadata.get("overlap_mode"),
-            # "overlap_from_chunk_index": chunk.metadata.get("overlap_from_chunk_index"),
-            # "overlap_length": chunk.metadata.get("overlap_length"),
-            # "overlap_sentence_count": chunk.metadata.get("overlap_sentence_count"),
             "chunk": chunk.page_content,
-            # 保留切分器生成的标题归属、section 内序号和原文行号等信息。
-            # "metadata": dict(chunk.metadata),
         } for chunk in chunks]
         return chunks
 
