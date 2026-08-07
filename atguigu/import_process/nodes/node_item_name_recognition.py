@@ -4,14 +4,14 @@
 @Desc    :
 '''
 import json
-from typing import Tuple, List
+from typing import Tuple, List, Any
 
 from langchain_core.messages import SystemMessage, HumanMessage
 
-from atguigu.import_process import prompt
 from atguigu.import_process.base import NodeBase
 from atguigu.import_process.prompt import NAME_RECOGNITION
 from atguigu.import_process.state import ImportGraphState
+from atguigu.tool.bge_m3_utils import get_embedding_for_milvus
 from atguigu.tool.llm_util import get_llm_model
 from atguigu.tool.logger import logger
 
@@ -34,14 +34,30 @@ class NodeItemNameRecognition(NodeBase):
         top_k_chunks = self.get_top_k_chunks(chunks, file_title)
 
         # 调用LLM, 输入提示词, 进行主体识别
-        item_name=self.get_item_name(top_k_chunks, file_title)
+        item_name = self.get_item_name(top_k_chunks, file_title)
         print(item_name)
 
         # 主体信息回写chunks
+        for chunk in chunks:
+            chunk["item_name"] = item_name
 
         # 使用BGE-M3进行混合向量化
+        dense, sparse = self.get_embedding_vector(item_name)
 
-        return state
+        # 混合向量写入milvus
+
+        return {"chunks": chunks}
+
+    def get_embedding_vector(self, item_name: str) -> tuple[Any, Any]:
+        """
+        用BGE-M3 embedding模型, 为主体生成稠密向量和稀疏向量
+        :param item_name:
+        :return:
+        """
+        embedding_dict = get_embedding_for_milvus([item_name])
+        dense = embedding_dict["dense"][0]
+        sparse = embedding_dict["sparse"][0]
+        return dense, sparse
 
     def init_param(self, state: ImportGraphState) -> Tuple[str, List[dict]]:
 
@@ -78,17 +94,17 @@ class NodeItemNameRecognition(NodeBase):
 
         return prompts
 
-    def get_item_name(self, top_k_chunks:str, file_title:str):
+    def get_item_name(self, top_k_chunks: str, file_title: str):
         """如果调用大模型出错或者输出没有东西, 用file_title作为item_name"""
         try:
             llm = get_llm_model()
 
-            messages=[
+            messages = [
                 SystemMessage(content="你是商品识别专家，只输出识别的字符串即可！"),
                 HumanMessage(content=NAME_RECOGNITION.format(file_title=file_title, context=top_k_chunks))
             ]
 
-            item_name=llm.invoke(messages).content
+            item_name = llm.invoke(messages).content
 
             if item_name:
                 return item_name.strip().replace("\n", "").replace("\r", "").replace(" ", "")
@@ -111,4 +127,4 @@ if __name__ == '__main__':
         "file_title": "hak180产品安全手册"
     }
 
-    node(init_state)
+    print(node(init_state))

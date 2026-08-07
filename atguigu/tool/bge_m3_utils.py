@@ -12,6 +12,7 @@ from atguigu.config.config import KBImportConfig
 
 model = None
 
+
 # 单例 懒加载
 def bge_m3_embedding_files(docs: List[str]):
     global model
@@ -30,9 +31,8 @@ def get_embedding_for_milvus(docs: List[str]):
 
     return {
         "dense": [chunk.tolist() for chunk in embedding_content["dense"]],
-        "sparse":[dict(zip(chunk.indices.tolist(), chunk.data.tolist())) for chunk in embedding_content["sparse"]],
+        "sparse": [dict(zip(chunk.indices.tolist(), chunk.data.tolist())) for chunk in embedding_content["sparse"]],
     }
-
 
 
 if __name__ == '__main__':
@@ -43,7 +43,7 @@ if __name__ == '__main__':
     ]
 
     embedding_content = get_embedding_for_milvus(docs)
-    result=json.dumps(embedding_content, indent=4, ensure_ascii=False)
+    result = json.dumps(embedding_content, indent=4, ensure_ascii=False)
     print(result)
     # dense = embedding_content["dense"]
     # sparse = embedding_content["sparse"]

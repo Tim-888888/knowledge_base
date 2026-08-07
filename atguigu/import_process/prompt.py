@@ -4,7 +4,7 @@
 @Desc    :
 '''
 
-NAME_RECOGNITION="""请从以下信息中识别出商品品牌、名称与型号：
+NAME_RECOGNITION = """请从以下信息中识别出商品品牌、名称与型号：
 文件名：{file_title}
 
 正文切片（用于辅助识别）：
