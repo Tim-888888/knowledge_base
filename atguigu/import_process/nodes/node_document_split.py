@@ -61,7 +61,6 @@ class NodeDocumentSplit(NodeBase):
         # 粗切分: 按md结构切分 -> 按标题和代码围栏做切分
         # md_section_list = self.md_section_split(file_title, md_content)
 
-
         # 精细切分: 长切短合, 用递归切分器切分
         # chunks = self.md_fine_split(md_section_list)
 
@@ -94,7 +93,6 @@ class NodeDocumentSplit(NodeBase):
                 "file_title": file_title,
             }
         )
-        print(len(chunks))
 
         chunks = [{
             "file_title": chunk.metadata.get("file_title"),
@@ -102,6 +100,7 @@ class NodeDocumentSplit(NodeBase):
             "nearest_heading_position": chunk.metadata.get("section_chunk_index"),
             "overlap_content": chunk.metadata.get("overlap_content"),
             "chunk": chunk.page_content,
+            "raw_chunk": chunk.metadata.get("raw_chunk")
         } for chunk in chunks]
         return chunks
 
@@ -232,12 +231,13 @@ class NodeDocumentSplit(NodeBase):
             # 切分逻辑
             chunk_list = splitter.split_text(section_content_without_title)
             chunks.extend(
-                [{
-                    "file_title": file_title,
-                    "section_title": section_title,
-                    "chunk": section_title + "\n\n" + chunk,
-                    "position": idx
-                }
+                [
+                    {
+                        "file_title": file_title,
+                        "section_title": section_title,
+                        "chunk": section_title + "\n\n" + chunk,
+                        "position": idx
+                    }
                     for idx, chunk in enumerate(chunk_list, start=1)
                 ]
             )

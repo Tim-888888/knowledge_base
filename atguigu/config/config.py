@@ -22,6 +22,8 @@ class KBImportConfig:
 
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     OPENAI_API_BASE = os.getenv("OPENAI_API_BASE")
+    CLOSEAI_API_KEY = os.getenv("CLOSEAI_API_KEY")
+    CLOSEAI_API_BASE = os.getenv("CLOSEAI_API_BASE")
     LLM_DEFAULT_MODEL = os.getenv("LLM_DEFAULT_MODEL")
     LLM_DEFAULT_TEMPERATURE = float(os.getenv("LLM_DEFAULT_TEMPERATURE"))
     VL_MODEL = os.getenv("VL_MODEL")

@@ -275,6 +275,7 @@ class MarkdownChunker:
                     "block_types": list(draft.block_types),
                     "image_refs": list(draft.image_refs),
                     "chunk_length": self._length(draft.content),
+                    "raw_chunk": draft.content,
                 }
             )
             h1= draft.h1 + "\n\n" if draft.h1 else ""
