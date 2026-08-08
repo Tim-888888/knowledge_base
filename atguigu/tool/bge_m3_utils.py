@@ -20,7 +20,8 @@ def bge_m3_embedding_files(docs: List[str]):
         model = BGEM3EmbeddingFunction(
             model_name=KBImportConfig.BGE_M3_PATH,
             device=KBImportConfig.BGE_DEVICE,
-            use_fp16=KBImportConfig.BGE_FP16
+            use_fp16=KBImportConfig.BGE_FP16,
+            batch_size=16
         )
 
     return model.encode_documents(docs)
