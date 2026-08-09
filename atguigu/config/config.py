@@ -36,6 +36,7 @@ class KBImportConfig:
     BGE_RERANKER_LARGE = os.getenv("BGE_RERANKER_LARGE")
     BGE_RERANKER_DEVICE = os.getenv("BGE_RERANKER_DEVICE")
     BGE_RERANKER_FP16 = os.getenv("BGE_RERANKER_FP16")
+    BGE_DENSE_DIM = int(os.getenv("BGE_DENSE_DIM"))
 
     EMBEDDING_DIM = os.getenv("EMBEDDING_DIM")
     EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL")

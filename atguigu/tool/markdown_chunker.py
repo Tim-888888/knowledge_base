@@ -248,7 +248,7 @@ class MarkdownChunker:
                 {
                     "chunk_index": index,
                     "h1": draft.h1,
-                    "h2": draft.h2,
+                    "h2": draft.h2 or "无标题",
                     "nearest_heading": (
                         (single_position["nearest_heading"] if single_position else None) or "无标题"
                     ),
@@ -278,10 +278,10 @@ class MarkdownChunker:
                     "raw_chunk": draft.content,
                 }
             )
-            h1= draft.h1 + "\n\n" if draft.h1 else ""
-            h2= draft.h2 + "\n\n" if draft.h2 else ""
+            h1= f"一级标题:{draft.h1}" + "\n\n" if draft.h1 else ""
+            h2= f"二级标题:{draft.h2}" + "\n\n" if draft.h2 else ""
             overlap_content = metadata.get('overlap_content') if add_overlap_to_content else ""
-            page_content = h1 + h2 + f"position:{metadata.get('section_chunk_index')}\n\n" + overlap_content + draft.content
+            page_content = h1 + h2 + f"这个chunk所在最近标题的位置:{metadata.get('section_chunk_index')}\n\n" + f"上一个chunk的结尾内容:{overlap_content}\n" + f"chunk内容:{draft.content}"
             documents.append(Document(page_content=page_content, metadata=metadata))
 
         return documents

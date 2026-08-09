@@ -103,4 +103,4 @@ if __name__ == '__main__':
     result = graph.run(init_state, is_stream=False)
 
     # result = MainGraph.create_and_run(init_state, is_stream=False)
-    print(parse_json(result))
+    # print(parse_json(result))

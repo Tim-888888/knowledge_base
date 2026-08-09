@@ -4,6 +4,7 @@
 @Desc    :
 '''
 import json
+from pathlib import Path
 from typing import Tuple, List, Any, Dict
 
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -14,6 +15,7 @@ from atguigu.import_process.base import NodeBase
 from atguigu.import_process.prompt import NAME_RECOGNITION
 from atguigu.import_process.state import ImportGraphState
 from atguigu.tool.bge_m3_utils import get_embedding_for_milvus
+from atguigu.tool.json_format_util import parse_json
 from atguigu.tool.llm_util import get_llm_model
 from atguigu.tool.logger import logger
 from atguigu.tool.milvus_utils import get_milvus_client
@@ -38,7 +40,6 @@ class NodeItemNameRecognition(NodeBase):
 
         # 调用LLM, 输入提示词, 进行主体识别
         item_name = self.get_item_name(top_k_chunks, file_title)
-        print(item_name)
 
         # 主体信息回写chunks
         for chunk in chunks:
@@ -52,6 +53,10 @@ class NodeItemNameRecognition(NodeBase):
 
         # 将混合向量写入milvus, 幂等写入
         self.upsert_milvus(milvus_client, dense, sparse, file_content_sha256, file_title, item_name)
+
+        # 落盘json测试用
+        with open(rf"E:\output\{file_title}\{file_title}_item_name.json", mode="w", encoding='utf-8') as f:
+            f.write(parse_json(chunks))
 
         return {"chunks": chunks}
 
@@ -155,7 +160,7 @@ class NodeItemNameRecognition(NodeBase):
             ).add_field(
                 field_name="dense_vector",
                 datatype=DataType.FLOAT_VECTOR,
-                dim=1024
+                dim=KBImportConfig.BGE_DENSE_DIM
             ).add_field(
                 field_name="sparse_vector",
                 datatype=DataType.SPARSE_FLOAT_VECTOR

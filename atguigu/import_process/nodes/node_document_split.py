@@ -76,9 +76,9 @@ class NodeDocumentSplit(NodeBase):
             self,
             file_title: str,
             md_content: str,
-            max_chunk_size=500,
+            max_chunk_size=600,
             min_chunk_size=200,
-            chunk_overlap=50,
+            chunk_overlap=60,
             overlap_mode: Literal["sentence", "token"] = "token"
     ) -> list[dict[str, str | None | Any]]:
         chunker = MarkdownChunker(
@@ -91,16 +91,18 @@ class NodeDocumentSplit(NodeBase):
             md_content,
             extra_metadata={
                 "file_title": file_title,
-            }
+            },
+            add_overlap_to_content=True
         )
 
         chunks = [{
             "file_title": chunk.metadata.get("file_title"),
+            "h2": chunk.metadata.get("h2"),
             "nearest_heading_title": chunk.metadata.get("nearest_heading"),
             "nearest_heading_position": chunk.metadata.get("section_chunk_index"),
             "overlap_content": chunk.metadata.get("overlap_content"),
             "chunk": chunk.page_content,
-            "raw_chunk": chunk.metadata.get("raw_chunk")
+            "raw_chunk": chunk.metadata.get("raw_chunk"),
         } for chunk in chunks]
         return chunks
 
