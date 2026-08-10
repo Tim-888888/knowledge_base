@@ -3,8 +3,9 @@
 @Time    :2026/8/9
 @Desc    :
 '''
+import json
 from datetime import datetime
-from typing import List
+from typing import List, Any
 from unittest import result
 
 from bson import ObjectId
@@ -59,7 +60,7 @@ def get_history_mongo_tool():
 
 
 # 增
-def mongo_insert_data(session_id: str,
+def mongo_upsert_data(session_id: str,
                       role: str,
                       text: str,
                       rewritten_query: str = "",
@@ -88,7 +89,7 @@ def mongo_insert_data(session_id: str,
             return str(result.inserted_id)
     except Exception as e:
         logger.error(f"mongo更新/插入失败 {session_id}, {e}")
-        return 0
+        raise
 
 
 # 删
@@ -123,6 +124,19 @@ def mongo_get_recent_message_by_session(session_id: str, limit: int = 10):
     cursor = mongo_tool.chat_message_collection.find({"session_id": session_id}).sort("ts", -1).limit(limit)
     return list(cursor)
 
+
+# 定义自定义 JSON Encoder，解决原生json工具无法序列化ObjectId的问题
+class MongoJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, ObjectId):
+            return str(obj)
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
+
+
+def format_json(data: Any, indent: int = 4, ensure_ascii: bool = False) -> str:
+    return json.dumps(data, indent=indent, ensure_ascii=ensure_ascii, cls=MongoJSONEncoder)
 
 if __name__ == '__main__':
     # result=mongo_insert_data("test_001", "user","你好有烫金机吗?")
