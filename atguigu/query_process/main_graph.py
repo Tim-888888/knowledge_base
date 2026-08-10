@@ -30,7 +30,7 @@ class KBQueryWorkflow:
         # 1. 初始化LangGraph状态图
         self.workflow = StateGraph(QueryGraphState)
         # 2. 初始化所有业务节点（实例属性，支持多实例隔离）
-        self._init_nodes()
+        # self._init_nodes()
         # 3. 注册节点到工作流
         self._register_nodes()
         # 4. 设置入口和路由规则
@@ -50,14 +50,15 @@ class KBQueryWorkflow:
 
     def _register_nodes(self):
         """注册所有节点到工作流（私有方法，统一管理节点注册）"""
+        self._init_nodes()
         # 节点标识与实例属性名保持一致，便于维护
-        self.workflow.add_node("node_item_name_confirm", self.node_item_name_confirm) # 确认主体
-        self.workflow.add_node("node_search_embedding", self.node_search_embedding) # 向量搜索
-        self.workflow.add_node("node_search_embedding_hyde", self.node_search_embedding_hyde) #假设性答案向量搜索
-        self.workflow.add_node("node_web_search_mcp", self.node_web_search_mcp) # 联网搜索
-        self.workflow.add_node("node_rrf", self.node_rrf) # 排序
-        self.workflow.add_node("node_rerank", self.node_rerank) # 重排
-        self.workflow.add_node("node_answer_output", self.node_answer_output) # 生成
+        self.workflow.add_node(self.node_item_name_confirm.name, self.node_item_name_confirm) # 确认主体
+        self.workflow.add_node(self.node_search_embedding.name, self.node_search_embedding) # 向量搜索
+        self.workflow.add_node(self.node_search_embedding_hyde.name, self.node_search_embedding_hyde) #假设性答案向量搜索
+        self.workflow.add_node(self.node_web_search_mcp.name, self.node_web_search_mcp) # 联网搜索
+        self.workflow.add_node(self.node_rrf.name, self.node_rrf) # 排序
+        self.workflow.add_node(self.node_rerank.name, self.node_rerank) # 重排
+        self.workflow.add_node(self.node_answer_output.name, self.node_answer_output) # 生成
 
     def _route_after_item_name_confirm(self, state: QueryGraphState) -> str:
         """主体名称确认后的条件路由函数"""
@@ -75,38 +76,40 @@ class KBQueryWorkflow:
             - 处理 ：节点会生成一条拒绝句作为 answer ，例如：“抱歉，未找到相关产品，请提供准确型号以便我为您查询。”
             - 结果 ：同样不需要后续检索，直接结束流程。
             """
-            return "node_answer_output"
+            # return "node_answer_output"
+            return self.node_answer_output.name
 
         # 否则继续搜索流程
-        return ["node_search_embedding", "node_search_embedding_hyde", "node_web_search_mcp"]
+        # return ["node_search_embedding", "node_search_embedding_hyde", "node_web_search_mcp"]
+        return [self.node_search_embedding.name, self.node_search_embedding_hyde.name, self.node_web_search_mcp.name]
 
 
     def _setup_routes(self):
         """设置工作流路由规则"""
         # 1、设置入口节点
-        self.workflow.set_entry_point("node_item_name_confirm")
+        self.workflow.set_entry_point(self.node_item_name_confirm.name)
 
         # 2、注册条件路由边
         self.workflow.add_conditional_edges(
-            "node_item_name_confirm",
+            self.node_item_name_confirm.name,
             self._route_after_item_name_confirm,
             {
-                "node_answer_output": "node_answer_output",
-                "node_search_embedding": "node_search_embedding",
-                "node_search_embedding_hyde": "node_search_embedding_hyde",
-                "node_web_search_mcp": "node_web_search_mcp"
+                self.node_answer_output.name: self.node_answer_output.name,
+                self.node_search_embedding.name: self.node_search_embedding.name,
+                self.node_search_embedding_hyde.name: self.node_search_embedding_hyde.name,
+                self.node_web_search_mcp.name: self.node_web_search_mcp.name
             }
         )
 
         # 3. 多路搜索结果合并
-        self.workflow.add_edge("node_search_embedding", "node_rrf")
-        self.workflow.add_edge("node_search_embedding_hyde", "node_rrf")
-        self.workflow.add_edge("node_web_search_mcp", "node_rrf")
+        self.workflow.add_edge(self.node_search_embedding.name, self.node_rrf.name)
+        self.workflow.add_edge(self.node_search_embedding_hyde.name, self.node_rrf.name)
+        self.workflow.add_edge(self.node_web_search_mcp.name, self.node_rrf.name)
 
         # 4. 排序 -> 重排 -> 生成 -> 结束
-        self.workflow.add_edge("node_rrf", "node_rerank")
-        self.workflow.add_edge("node_rerank", "node_answer_output")
-        self.workflow.add_edge("node_answer_output", END)
+        self.workflow.add_edge(self.node_rrf.name, self.node_rerank.name)
+        self.workflow.add_edge(self.node_rerank.name, self.node_answer_output.name)
+        self.workflow.add_edge(self.node_answer_output.name, END)
 
 
     def compile(self):
@@ -123,8 +126,8 @@ class KBQueryWorkflow:
         :return: 执行完成后的状态对象
         """
         """"""
-        if not self._compiled_app:
-            self.compile()
+        if self._compiled_app is None:
+            self._compiled_app = self.workflow.compile()
 
         self._compiled_app.get_graph().print_ascii()
 
