@@ -104,13 +104,13 @@ def mongo_delete_session(session_id: str):
 
 
 # 改
-def mongo_update_item_name_by_id(ids: List[str], item_names: List[str]) -> int:
+def mongo_update_item_name_by_id(ids: List[str], item_names: List[str], rewritten_query:str="") -> int:
     """更新当前聊天记录里面的商品名字段 (通过意图识别获取)"""
     mongo_tool = get_history_mongo_tool()
     try:
         obj_ids = [ObjectId(id) for id in ids]
         result = mongo_tool.chat_message_collection.update_many({"_id": {"$in": obj_ids}},
-                                                                {"$set": {"item_names": item_names}})
+                                                                {"$set": {"item_names": item_names, "rewritten_query":rewritten_query}})
         return result.modified_count
     except Exception as e:
         logger.error(f"mongo 更新item_name失败")
