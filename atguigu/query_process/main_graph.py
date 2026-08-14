@@ -17,7 +17,9 @@ from atguigu.query_process.nodes.node_search_embedding import NodeSearchEmbeddin
 from atguigu.query_process.nodes.node_search_embedding_hyde import NodeSearchEmbeddingHyde
 from atguigu.query_process.nodes.node_web_search_mcp import NodeWebSearchMcp
 from atguigu.query_process.state import QueryGraphState
+from atguigu.tool.json_format_util import parse_json
 from atguigu.tool.logger import logger
+from atguigu.tool.mongo_history_utils import format_json
 
 
 class KBQueryWorkflow:
@@ -140,14 +142,17 @@ class KBQueryWorkflow:
 if __name__ == "__main__":
 
     # 定义初始状态
-    init_state = { "original_query": "如何使用万用表测量电压？"}
+    init_state = {
+        "session_id": "test_001",
+        "original_query": "请问hak180烫金机怎么使用？"
+    }
 
     workflow = KBQueryWorkflow()
-    # final_state = workflow.run(init_state)
-    # logger.info(final_state)
+    final_state = workflow.run(init_state)
+    logger.warning(format_json(final_state['answer']))
     # 流式输出
-    for chunk in workflow.run(init_state, stream=True):
-        logger.warning(chunk)
+    # for chunk in workflow.run(init_state, stream=True):
+    #     logger.warning(chunk)
 
     # 打印编译后的图结构
-    logger.info(workflow.compile().get_graph().draw_ascii())
+    # logger.info(workflow.compile().get_graph().draw_ascii())

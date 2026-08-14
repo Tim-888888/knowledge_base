@@ -3,9 +3,13 @@
 @Time    :2026/8/9
 @Desc    :
 '''
+from email import message
+
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from atguigu.query_process.base import NodeBase
 from atguigu.query_process.state import QueryGraphState
+from atguigu.tool.llm_util import get_llm_model
 from atguigu.tool.logger import logger
 
 class NodeAnswerOutput(NodeBase):
@@ -24,8 +28,21 @@ class NodeAnswerOutput(NodeBase):
         :param state: 工作流状态对象
         :return: 更新后的状态对象
         """
+        answer=state.get("answer")
+        if not answer:
+            rrf_chunks:list[dict] = state.get("rrf_chunks")
+            rewritten_query = state.get("rewritten_query")
 
-        # TODO
-        logger.info(f"【{self.name}】节点逻辑")
+            content="\n".join([f"{rrf_chunk.get('title')}, {rrf_chunk.get('content')}" for rrf_chunk in rrf_chunks])
+            message=f"用户问题:{rewritten_query}\n 召回答案:{content}"
 
-        return state
+            llm = get_llm_model()
+
+            input = [
+                SystemMessage("根据提供的召回答案, 回复用户问题"),
+                HumanMessage(message)
+            ]
+
+            answer=llm.invoke(input).content
+
+        return {"answer":answer}

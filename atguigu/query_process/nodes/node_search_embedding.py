@@ -40,7 +40,7 @@ class NodeSearchEmbedding(NodeBase):
         embedding_contents = get_embedding_for_milvus([rewritten_query])
         dense = embedding_contents.get('dense')[0]
         sparse = embedding_contents.get('sparse')[0]
-        expr = f"item_name in {json.dumps(item_names)}"
+        expr = f"item_name in {json.dumps(item_names, ensure_ascii=False)}"
         output_fields = ["chunk_id", "title", "file_title", "content", "item_name"]
         match_chunks = self.retrieval_milvus(dense, sparse, expr, output_fields)
 

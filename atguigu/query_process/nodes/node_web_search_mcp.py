@@ -53,7 +53,7 @@ class NodeWebSearchMcp(NodeBase):
                         continue
                     docs.append({"title": title, "url": url, "snippet": snippet, "source": "web"})
 
-                logger.info("MCP 搜索结果:", docs)
+                # logger.info("MCP 搜索结果:", docs)
 
         if docs:
             return {"web_search_docs": docs}
@@ -85,7 +85,7 @@ class NodeWebSearchMcp(NodeBase):
 
 if __name__ == "__main__":
     init_state = {
-        "rewritten_query": "关于brother HAK180烫金机，如何调节转印温度？"
+        "rewritten_query": "请问hak180烫金机怎么使用？"
     }
 
     # 执行节点的业务调用
