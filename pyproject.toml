@@ -26,6 +26,7 @@ dependencies = [
     "openai-agents>=0.20.0",
     "mcp>=1.28,<2",
     "dashscope>=1.26.7",
+    "uvicorn[standard]>=0.52.1",
 ]
 
 [dependency-groups]
