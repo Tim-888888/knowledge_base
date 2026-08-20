@@ -65,25 +65,35 @@ def mongo_upsert_data(session_id: str,
                       text: str,
                       rewritten_query: str = "",
                       item_names: list[str] = None,
-                      message_id: str = None):
+                      message_id: str = None,
+                      image_urls: list[str] = None):
     mongo_tool = get_history_mongo_tool()
 
     try:
-        message = {
-            "session_id": session_id,
-            "role": role,
-            "text": text,
-            "rewritten_query": rewritten_query,
-            "item_names": item_names,
-            "ts": datetime.now().timestamp()
-        }
 
         # 根据主键id是否存在, 进行更新/新增
         if message_id:
+            message = {
+                "session_id": session_id,
+                "role": role,
+                "text": text,
+                "rewritten_query": rewritten_query,
+                "item_names": item_names,
+                "image_urls":image_urls
+            }
             # 修改
             mongo_tool.chat_message_collection.update_one({"_id": ObjectId(message_id)}, {"$set": message})
             return message_id
         else:
+            message = {
+                "session_id": session_id,
+                "role": role,
+                "text": text,
+                "rewritten_query": rewritten_query,
+                "item_names": item_names,
+                "image_urls": image_urls,
+                "ts": datetime.now().timestamp()
+            }
             # 新增
             result = mongo_tool.chat_message_collection.insert_one(message)
             return str(result.inserted_id)

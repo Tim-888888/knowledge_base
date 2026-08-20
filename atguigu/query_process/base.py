@@ -3,6 +3,7 @@
 @Time    :2026/8/9
 @Desc    :
 '''
+from atguigu.tool.task_utils import put_queue_data, get_task_info, add_running_task, add_done_task
 
 """
 查询流程节点基类
@@ -28,10 +29,15 @@ class NodeBase(ABC):
         节点执行入口
         """
         try:
+            task_id = state.get("task_id")
             logger.info(f"[{self.name}] 开始执行...")
+            add_running_task(task_id, self.name)
+            put_queue_data(task_id, "progress", get_task_info(task_id))
 
             result = self.process(state)
-
+            
+            add_done_task(task_id, self.name)
+            put_queue_data(task_id, "progress", get_task_info(task_id))
             logger.info(f"[{self.name}] 结束执行...")
 
             return result

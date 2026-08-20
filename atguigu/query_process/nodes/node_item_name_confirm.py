@@ -198,11 +198,11 @@ class NodeItemNameConfirm(NodeBase):
         if match_item_and_score:
             confirm_items = [search_item.get("search_item_name")
                              for search_item in match_item_and_score
-                             if search_item.get("score") >= 0.85]
+                             if search_item.get("score") >= 0.90]
 
             optional_items = [search_item.get("search_item_name")
                               for search_item in match_item_and_score
-                              if 0.6 <= search_item.get("score") < 0.85]
+                              if 0.6 <= search_item.get("score") < 0.90]
 
         return confirm_items, optional_items
 

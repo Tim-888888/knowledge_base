@@ -138,6 +138,10 @@ class KBQueryWorkflow:
         else:
             return self._compiled_app.invoke(initial_state)
 
+    @classmethod
+    def create_and_run(cls, init_state: QueryGraphState, stream: bool = False) -> QueryGraphState:
+        return cls().run(init_state, stream)
+
 # ===================== 用法示例 =====================
 if __name__ == "__main__":
 

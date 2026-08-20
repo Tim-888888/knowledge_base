@@ -1,5 +1,9 @@
+import json
 from collections import defaultdict
+from queue import Queue
 from typing import Dict, List, Any
+
+import time
 
 # ---------------------------
 # 内存态任务追踪（单进程）
@@ -176,3 +180,20 @@ def get_task_info(task_id: str) -> Dict[str, Any]:
         "done_list": get_done_task_list(task_id),
         "durations": get_node_durations(task_id)
     }
+
+queue_dict:Dict[str, Queue[dict]] = {}
+
+def create_queue(task_id:str):
+    if task_id not in queue_dict:
+        queue_dict[task_id] = Queue()
+
+def put_queue_data(task_id:str, event:str, data):
+    if task_id not in queue_dict:
+        queue_dict[task_id] = Queue()
+    queue = queue_dict[task_id]
+    queue.put({"event":event, "data": data})
+
+def get_queue_data(task_id: str) -> Queue[dict]:
+    while task_id not in queue_dict:
+        time.sleep(0.1)
+    return queue_dict[task_id]
